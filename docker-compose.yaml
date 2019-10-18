@@ -32,3 +32,12 @@ services:
         loki-url: "http://212.64.58.168:3100/api/prom/push"
         loki-retries: "5"
         loki-batch-size: "400"
+
+  promtail:
+    image: grafana/promtail
+    container_name: promtail
+    volumes:
+        - ./config/promtail/:/etc/promtail
+        - ./var/log:/var/log
+    command:
+        -config.file=/etc/promtail/promtail-docker-config.yaml
