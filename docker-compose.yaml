@@ -41,3 +41,5 @@ services:
         - ./var/log:/var/log
     command:
         -config.file=/etc/promtail/promtail-docker-config.yaml
+    ports:
+        - "9080:9080"
