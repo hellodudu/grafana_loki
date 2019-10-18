@@ -16,7 +16,7 @@ A simple base config files to start up log gathering system, running on docker-c
     docker-compose up -d
     ```
 
-- set datasource `http://loki:3100` from grafana.
+- set datasource `http://loki:3100` in grafana.
 
 - push logs with api `http://{public_ip}:3100/api/prom/push`.
 
