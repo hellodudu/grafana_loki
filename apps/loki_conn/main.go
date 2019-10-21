@@ -3,17 +3,16 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
 	"syscall"
 
 	"github.com/BurntSushi/toml"
-	"github.com/hashicorp/vic/pkg/version"
 	"github.com/hellodudu/grafana_loki/loki_conn"
 	"github.com/judwhite/go-svc/svc"
 	"github.com/mreiferson/go-options"
-	"github.com/nsqio/nsq/nsqlookupd"
 )
 
 func lokiConnFlagSet(opts *loki_conn.Options) *flag.FlagSet {
@@ -22,20 +21,19 @@ func lokiConnFlagSet(opts *loki_conn.Options) *flag.FlagSet {
 	flagSet.String("url", "loki:3100/api/prom/push", "loki's url")
 
 	flagSet.Duration("interval", opts.Interval, "interval seconds of connecting to loki")
-	flagSet.Duration("tombstone-lifetime", opts.TombstoneLifetime, "duration of time a producer will remain tombstoned if registration remains")
 
 	return flagSet
 }
 
 type program struct {
-	once       sync.Once
-	nsqlookupd *nsqlookupd.NSQLookupd
+	once     sync.Once
+	lokiConn *loki_conn.LokiConn
 }
 
 func main() {
 	prg := &program{}
-	if err := svc.Run(prg, syscall.SIGINT, syscall.SIGTERM); err != nil {
-		logFatal("%s", err)
+	if err := svc.Run(prg, syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGINT, syscall.SIGTERM); err != nil {
+		log.Fatal("%s", err)
 	}
 }
 
@@ -53,29 +51,27 @@ func (p *program) Start() error {
 	flagSet := lokiConnFlagSet(opts)
 	flagSet.Parse(os.Args[1:])
 
-	if flagSet.Lookup("version").Value.(flag.Getter).Get().(bool) {
-		fmt.Println(version.String("nsqlookupd"))
-		os.Exit(0)
-	}
-
 	var cfg map[string]interface{}
-	configFile := flagSet.Lookup("config").Value.String()
-	if configFile != "" {
-		_, err := toml.DecodeFile(configFile, &cfg)
-		if err != nil {
-			logFatal("failed to load config file %s - %s", configFile, err)
+	configFlag := flagSet.Lookup("config")
+	if configFlag != nil {
+		configFile := configFlag.Value.String()
+		if configFile != "" {
+			_, err := toml.DecodeFile(configFile, &cfg)
+			if err != nil {
+				fmt.Errorf("failed to load config file %s - %s", configFile, err)
+			}
 		}
 	}
 
 	options.Resolve(opts, flagSet, cfg)
-	nsqlookupd, err := nsqlookupd.New(opts)
+	lokiConn, err := loki_conn.New(opts)
 	if err != nil {
-		logFatal("failed to instantiate nsqlookupd", err)
+		fmt.Errorf("failed to instantiate nsqlookupd", err)
 	}
-	p.nsqlookupd = nsqlookupd
+	p.lokiConn = lokiConn
 
 	go func() {
-		err := p.nsqlookupd.Main()
+		err := p.lokiConn.Main()
 		if err != nil {
 			p.Stop()
 			os.Exit(1)
@@ -87,11 +83,7 @@ func (p *program) Start() error {
 
 func (p *program) Stop() error {
 	p.once.Do(func() {
-		p.nsqlookupd.Exit()
+		p.lokiConn.Exit()
 	})
 	return nil
-}
-
-func logFatal(f string, args ...interface{}) {
-	lg.LogFatal("[nsqlookupd] ", f, args...)
 }
