@@ -43,3 +43,11 @@ services:
         -config.file=/etc/promtail/promtail-docker-config.yaml
     ports:
         - "9080:9080"
+
+  loki_conn:
+    image: hellodudu86/loki_conn
+    container_name: loki_conn
+    command:
+        -url="http://loki:3100/api/prom/push"
+    depends_on:
+        - loki
